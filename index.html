@@ -4,113 +4,165 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FOTO ADHE BLUR</title>
+    <!-- Library MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
-        html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #fafafa; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif; }
-        
-        .judul { font-size: 24px; font-weight: 800; color: #333; margin-bottom: 10px; z-index: 10; }
-        
-        /* Indikator status biar tahu AI jalan atau gak */
-        #status { font-size: 12px; color: #666; margin-bottom: 10px; }
-
-        #containerUtama {
+        /* Mengunci halaman agar 100% tidak bisa di-scroll */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #fafafa;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             position: relative;
-            width: 90%; max-width: 400px; aspect-ratio: 3/4;
-            border-radius: 20px; overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            border: 4px solid #fff; z-index: 10;
         }
 
-        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); transition: filter 0.5s ease; }
-        .blur-active { filter: blur(20px); }
-        #emojiCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
+        /* Hiasan Latar Belakang (Estetik Pastel) */
+        .hiasan {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(60px);
+            z-index: -1; /* Posisi di paling belakang */
+        }
+        .hiasan-1 {
+            width: 350px; height: 350px;
+            background-color: #ffd1dc; /* Pink pastel */
+            top: -100px; left: -100px;
+        }
+        .hiasan-2 {
+            width: 300px; height: 300px;
+            background-color: #e0f7fa; /* Biru muda pastel */
+            bottom: -50px; right: -80px;
+        }
+
+        /* Judul Paling Atas */
+        .judul {
+            font-size: 26px;
+            font-weight: 800;
+            color: #333;
+            margin-bottom: 25px;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        /* Container Kamera Dibuat Lebih Besar */
+        #kameraContainer {
+            width: 85%;
+            max-width: 450px;
+            aspect-ratio: 3 / 4; /* Proporsi Portrait HP */
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+            border: 5px solid #ffffff;
+            background: #e0e0e0;
+            z-index: 10;
+        }
+
+        #webcam { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; /* Agar video full tidak gepeng */
+            transform: scaleX(-1); /* Efek cermin */
+            transition: filter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); 
+        }
+
+        /* Efek Blur */
+        .blur-active { filter: blur(25px); }
+
+        /* Teks Instruksi */
+        .instruksi {
+            margin-top: 25px;
+            font-size: 13px;
+            color: #555;
+            text-align: center;
+            font-weight: 600;
+            z-index: 10;
+            background: rgba(255,255,255,0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body>
 
-    <div class="judul">FOTO ADHE BLUR</div>
-    <div id="status">Loading AI... Mohon tunggu</div>
+    <!-- Hiasan Background -->
+    <div class="hiasan hiasan-1"></div>
+    <div class="hiasan hiasan-2"></div>
 
-    <div id="containerUtama">
+    <!-- Judul -->
+    <div class="judul">FOTO ADHE BLUR</div>
+
+    <!-- Kamera -->
+    <div id="kameraContainer">
         <video id="webcam" autoplay playsinline></video>
-        <canvas id="emojiCanvas"></canvas>
+    </div>
+    
+    <div class="instruksi">
+        ✌️ Acungkan 2 Jari untuk Blur<br>Turunkan untuk Jernih
     </div>
 
-    <audio id="laguSal" loop><source src="foto_kita_blur.mp3" type="audio/mpeg"></audio>
+    <!-- Musik -->
+    <audio id="laguSal" loop>
+        <source src="foto_kita_blur.mp3" type="audio/mpeg">
+    </audio>
 
 <script type="module">
     import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
 
+    let gestureRecognizer;
     const video = document.getElementById('webcam');
-    const canvas = document.getElementById('emojiCanvas');
-    const status = document.getElementById('status');
-    const ctx = canvas.getContext('2d');
     const audio = document.getElementById('laguSal');
-    let emojis = [];
 
-    // Setup Canvas
-    function resizeCanvas() { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    async function setupApp() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+        gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" },
+            runningMode: "VIDEO"
+        });
 
-    // Inisialisasi AI
-    async function initAI() {
-        try {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
-            const gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" },
-                runningMode: "VIDEO"
-            });
-            
-            status.innerText = "✅ AI Siap! Klik layar untuk mulai.";
-            startCamera(gestureRecognizer);
-        } catch (e) {
-            status.innerText = "❌ Error: " + e.message;
-        }
-    }
-
-    async function startCamera(recognizer) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
         
-        document.body.addEventListener('click', () => { if(audio.paused) audio.play(); }, { once: true });
+        // Memulai lagu
+        document.body.addEventListener('click', () => {
+            if(audio.paused) audio.play();
+        }, { once: true });
         
-        // Loop Prediksi
-        function predict() {
-            const now = Date.now();
-            const results = recognizer.recognizeForVideo(video, now);
-            
-            let isVictory = false;
-            if (results.gestures.length > 0) {
-                // Kadang nama kategori bisa bervariasi, kita cek semua
-                results.gestures.forEach(gesture => {
-                    if (gesture[0].categoryName === "Victory") isVictory = true;
-                });
-            }
+        video.addEventListener("loadeddata", predictWebcam);
+    }
 
-            if (isVictory) {
-                video.classList.add("blur-active");
-                if(Math.random() < 0.2) spawnEmoji(); // Spawn emoji saat blur
-            } else {
-                video.classList.remove("blur-active");
+    async function predictWebcam() {
+        const results = gestureRecognizer.recognizeForVideo(video, Date.now());
+        
+        // Perbaikan BUG Logika di Sini
+        let adaVictory = false;
+
+        // Cek apakah kamera mendeteksi tangan dan melihat gestur Victory
+        if (results.gestures.length > 0) {
+            const gestureName = results.gestures[0][0].categoryName;
+            if (gestureName === "Victory") {
+                adaVictory = true; // Terdeteksi 2 jari
             }
-            requestAnimationFrame(predict);
         }
-        predict();
+
+        // Kalau ada Victory, aktifkan blur. Jika TIDAK (termasuk saat tangan disembunyikan), bersihkan blur.
+        if (adaVictory) {
+            video.classList.add("blur-active");
+        } else {
+            video.classList.remove("blur-active");
+        }
+
+        window.requestAnimationFrame(predictWebcam);
     }
 
-    // Animasi Emoji
-    function spawnEmoji() {
-        emojis.push({ x: Math.random() * canvas.width, y: canvas.height + 50, size: 30, speed: Math.random() * 2 + 2, char: ['❤️', '✨', '🥰'][Math.floor(Math.random() * 3)] });
-    }
-    function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        emojis.forEach((e, i) => { e.y -= e.speed; ctx.font = `${e.size}px Arial`; ctx.fillText(e.char, e.x, e.y); if(e.y < -50) emojis.splice(i, 1); });
-        requestAnimationFrame(animate);
-    }
-    animate();
-
-    initAI();
+    setupApp();
 </script>
 </body>
 </html>
