@@ -6,42 +6,30 @@
     <title>FOTO ADHE BLUR</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
     <style>
-        html, body {
-            margin: 0; padding: 0; width: 100vw; height: 100vh;
-            overflow: hidden; background-color: #fafafa;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            font-family: sans-serif; position: relative;
-        }
-
-        .hiasan { position: absolute; border-radius: 50%; filter: blur(60px); z-index: -1; }
-        .hiasan-1 { width: 300px; height: 300px; background-color: #ffdeeb; top: -50px; left: -50px; }
-        .hiasan-2 { width: 300px; height: 300px; background-color: #d1f7ff; bottom: -50px; right: -50px; }
-
-        .judul { font-size: 24px; font-weight: 800; color: #333; margin-bottom: 20px; z-index: 10; }
+        html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #fafafa; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif; }
+        
+        .judul { font-size: 24px; font-weight: 800; color: #333; margin-bottom: 10px; z-index: 10; }
+        
+        /* Indikator status biar tahu AI jalan atau gak */
+        #status { font-size: 12px; color: #666; margin-bottom: 10px; }
 
         #containerUtama {
             position: relative;
-            width: 85%; max-width: 450px; aspect-ratio: 3/4;
-            border-radius: 24px; overflow: hidden;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-            border: 5px solid #ffffff; z-index: 10;
+            width: 90%; max-width: 400px; aspect-ratio: 3/4;
+            border-radius: 20px; overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 4px solid #fff; z-index: 10;
         }
 
         #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); transition: filter 0.5s ease; }
-        .blur-active { filter: blur(25px); }
-
-        /* Canvas untuk emoji terbang */
-        #emojiCanvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; z-index: 15;
-        }
+        .blur-active { filter: blur(20px); }
+        #emojiCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 15; }
     </style>
 </head>
 <body>
 
-    <div class="hiasan hiasan-1"></div>
-    <div class="hiasan hiasan-2"></div>
     <div class="judul">FOTO ADHE BLUR</div>
+    <div id="status">Loading AI... Mohon tunggu</div>
 
     <div id="containerUtama">
         <video id="webcam" autoplay playsinline></video>
@@ -55,65 +43,74 @@
 
     const video = document.getElementById('webcam');
     const canvas = document.getElementById('emojiCanvas');
+    const status = document.getElementById('status');
     const ctx = canvas.getContext('2d');
     const audio = document.getElementById('laguSal');
     let emojis = [];
 
-    // Setup Canvas ukuran
+    // Setup Canvas
     function resizeCanvas() { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Fungsi membuat Emoji terbang
-    function spawnEmoji() {
-        if(video.classList.contains('blur-active')) {
-            emojis.push({
-                x: Math.random() * canvas.width,
-                y: canvas.height + 50,
-                size: Math.random() * 30 + 20,
-                speed: Math.random() * 2 + 1,
-                char: ['❤️', '✨', '🥰', '🌸'][Math.floor(Math.random() * 4)]
+    // Inisialisasi AI
+    async function initAI() {
+        try {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+            const gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" },
+                runningMode: "VIDEO"
             });
+            
+            status.innerText = "✅ AI Siap! Klik layar untuk mulai.";
+            startCamera(gestureRecognizer);
+        } catch (e) {
+            status.innerText = "❌ Error: " + e.message;
         }
     }
-    setInterval(spawnEmoji, 500); // Munculkan emoji tiap 0.5 detik
 
+    async function startCamera(recognizer) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        
+        document.body.addEventListener('click', () => { if(audio.paused) audio.play(); }, { once: true });
+        
+        // Loop Prediksi
+        function predict() {
+            const now = Date.now();
+            const results = recognizer.recognizeForVideo(video, now);
+            
+            let isVictory = false;
+            if (results.gestures.length > 0) {
+                // Kadang nama kategori bisa bervariasi, kita cek semua
+                results.gestures.forEach(gesture => {
+                    if (gesture[0].categoryName === "Victory") isVictory = true;
+                });
+            }
+
+            if (isVictory) {
+                video.classList.add("blur-active");
+                if(Math.random() < 0.2) spawnEmoji(); // Spawn emoji saat blur
+            } else {
+                video.classList.remove("blur-active");
+            }
+            requestAnimationFrame(predict);
+        }
+        predict();
+    }
+
+    // Animasi Emoji
+    function spawnEmoji() {
+        emojis.push({ x: Math.random() * canvas.width, y: canvas.height + 50, size: 30, speed: Math.random() * 2 + 2, char: ['❤️', '✨', '🥰'][Math.floor(Math.random() * 3)] });
+    }
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        emojis.forEach((e, i) => {
-            e.y -= e.speed;
-            ctx.font = `${e.size}px Arial`;
-            ctx.fillText(e.char, e.x, e.y);
-            if(e.y < -50) emojis.splice(i, 1);
-        });
+        emojis.forEach((e, i) => { e.y -= e.speed; ctx.font = `${e.size}px Arial`; ctx.fillText(e.char, e.x, e.y); if(e.y < -50) emojis.splice(i, 1); });
         requestAnimationFrame(animate);
     }
     animate();
 
-    // --- LOGIKA MEDIA PIPE ---
-    async function setupApp() {
-        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
-        const gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" },
-            runningMode: "VIDEO"
-        });
-
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        document.body.addEventListener('click', () => { if(audio.paused) audio.play(); }, { once: true });
-        
-        async function predict() {
-            const results = gestureRecognizer.recognizeForVideo(video, Date.now());
-            if (results.gestures.length > 0 && results.gestures[0][0].categoryName === "Victory") {
-                video.classList.add("blur-active");
-            } else {
-                video.classList.remove("blur-active");
-            }
-            window.requestAnimationFrame(predict);
-        }
-        predict();
-    }
-    setupApp();
+    initAI();
 </script>
 </body>
 </html>
