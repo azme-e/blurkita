@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Sal Priadi - Gesture Blur</title>
+    <!-- Library MediaPipe untuk Hand Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+    <style>
+        body { 
+            margin: 0; 
+            background: #050505; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            color: #fff;
+            font-family: sans-serif;
+        }
+        
+        #kameraContainer {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 3px solid #333;
+        }
+
+        #webcam { 
+            width: 100%; 
+            height: 100%; 
+            transform: scaleX(-1); /* Efek cermin */
+            transition: filter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); 
+        }
+
+        .blur-active { filter: blur(25px); }
+
+        p { margin-top: 20px; color: #888; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <div id="kameraContainer">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+    
+    <p>Acungkan 2 Jari (Victory) untuk Blur - Lepas untuk Jernih</p>
+
+    <!-- Musik Sal Priadi -->
+    <audio id="laguSal" loop>
+        <source src="foto_kita_blur.mp3" type="audio/mpeg">
+    </audio>
+
+<script type="module">
+    import { GestureRecognizer, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+
+    let gestureRecognizer;
+    const video = document.getElementById('webcam');
+    const audio = document.getElementById('laguSal');
+
+    async function setupApp() {
+        // 1. Setup MediaPipe
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+        gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task" },
+            runningMode: "VIDEO"
+        });
+
+        // 2. Aktifkan Kamera & Musik
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        
+        // Mulai musik otomatis (Banyak browser memblokir auto-play, jadi klik layar dulu jika perlu)
+        audio.play().catch(() => console.log("Perlu klik layar untuk memulai audio"));
+        
+        video.addEventListener("loadeddata", predictWebcam);
+    }
+
+    async function predictWebcam() {
+        const results = gestureRecognizer.recognizeForVideo(video, Date.now());
+
+        if (results.gestures.length > 0) {
+            const gestureName = results.gestures[0][0].categoryName;
+            
+            // "Victory" adalah deteksi 2 jari
+            if (gestureName === "Victory") {
+                video.classList.add("blur-active");
+            } else {
+                video.classList.remove("blur-active");
+            }
+        }
+        window.requestAnimationFrame(predictWebcam);
+    }
+
+    setupApp();
+</script>
+</body>
+</html>
